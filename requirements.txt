@@ -1,0 +1,4 @@
+substack-api>=1.0
+feedparser>=6.0
+beautifulsoup4>=4.12
+mcp[cli]>=1.0
