@@ -25,12 +25,19 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-### 2. Configure your newsletter slug
+### 2. Configure your newsletter
 
-Edit `config.py` and set your Substack slug:
+Edit `config.py` and set your newsletter. Works with Substack slugs or custom domains:
 
 ```python
-NEWSLETTER_SLUG = "yournewsletter"  # from yournewsletter.substack.com
+# Standard Substack URL:
+NEWSLETTER_SLUG = "yournewsletter"          # → https://yournewsletter.substack.com
+
+# Custom domain:
+NEWSLETTER_SLUG = "www.mycustomdomain.com"  # → https://www.mycustomdomain.com
+
+# Full URL also works:
+NEWSLETTER_SLUG = "https://www.mycustomdomain.com"
 ```
 
 ### 3. Ingest your articles

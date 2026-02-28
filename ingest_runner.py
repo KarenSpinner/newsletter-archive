@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 from db.schema import init_db
 from db.operations import upsert_newsletter, upsert_article, get_article_urls, update_last_fetched
-from ingest.fetcher import fetch_archive, extract_newsletter_metadata, fetch_post_content, parse_post_metadata
+from ingest.fetcher import resolve_base_url, fetch_archive, extract_newsletter_metadata, fetch_post_content, parse_post_metadata
 from ingest.parser import html_to_text
 
 
@@ -22,16 +22,16 @@ def main():
     parser.add_argument("--full", action="store_true", help="Re-fetch all articles (ignore existing)")
     args = parser.parse_args()
 
-    slug = config.NEWSLETTER_SLUG
+    base_url = resolve_base_url(config.NEWSLETTER_SLUG)
     db_path = config.DB_PATH
 
     # Initialize database
     conn = init_db(db_path)
 
     # Phase 1: Fetch archive metadata
-    print(f"Connecting to Substack: {slug}... ", end="", flush=True)
+    print(f"Connecting to Substack: {base_url}... ", end="", flush=True)
     try:
-        posts = fetch_archive(slug)
+        posts = fetch_archive(base_url)
     except Exception as e:
         print(f"FAILED\n  Error: {e}")
         sys.exit(1)
@@ -43,7 +43,7 @@ def main():
     print("OK")
 
     # Extract and save newsletter metadata
-    nl_meta = extract_newsletter_metadata(slug, posts)
+    nl_meta = extract_newsletter_metadata(base_url, posts)
     nl_meta["last_fetched"] = datetime.now(timezone.utc).isoformat()
     upsert_newsletter(conn, nl_meta)
 
@@ -57,7 +57,7 @@ def main():
     failed = 0
 
     for i, post in enumerate(posts, 1):
-        meta = parse_post_metadata(post, slug)
+        meta = parse_post_metadata(post, base_url)
         title = meta["title"]
         pub_date = (meta["published_date"] or "unknown")[:10]
 
@@ -70,7 +70,7 @@ def main():
             continue
 
         # Phase 2: Fetch full content
-        html_content = fetch_post_content(slug, meta["post_slug"])
+        html_content = fetch_post_content(base_url, meta["post_slug"])
         if html_content is None:
             print("FAILED (could not fetch content)")
             failed += 1

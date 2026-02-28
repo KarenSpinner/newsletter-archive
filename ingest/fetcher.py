@@ -1,18 +1,41 @@
 import json
 import time
+from urllib.parse import urlparse
 
 import requests
 from substack_api.post import Post
 
 
-def fetch_archive(slug: str) -> list[dict]:
+def resolve_base_url(newsletter: str) -> str:
+    """Convert a slug, domain, or full URL into a base URL.
+
+    Accepts:
+        "wonderingaboutai"                → https://wonderingaboutai.substack.com
+        "wonderingaboutai.substack.com"   → https://wonderingaboutai.substack.com
+        "www.mycustomdomain.com"          → https://www.mycustomdomain.com
+        "https://www.mycustomdomain.com"  → https://www.mycustomdomain.com
+    """
+    newsletter = newsletter.strip().rstrip("/")
+
+    # Already a full URL
+    if newsletter.startswith("http://") or newsletter.startswith("https://"):
+        return newsletter
+
+    # Has a dot → treat as domain
+    if "." in newsletter:
+        return f"https://{newsletter}"
+
+    # Plain slug
+    return f"https://{newsletter}.substack.com"
+
+
+def fetch_archive(base_url: str) -> list[dict]:
     """Fetch all post metadata from the Substack archive API.
 
     Returns a list of raw post dicts for newsletter articles only (no restacks).
     Uses a small page size because the Substack API returns inconsistent counts
     with larger limits, and always fetches until a truly empty page.
     """
-    base_url = f"https://{slug}.substack.com"
     all_posts = []
     offset = 0
     limit = 12  # Small pages — API returns inconsistent counts with limit=25+
@@ -40,8 +63,14 @@ def fetch_archive(slug: str) -> list[dict]:
     return all_posts
 
 
-def extract_newsletter_metadata(slug: str, posts: list[dict]) -> dict:
+def extract_newsletter_metadata(base_url: str, posts: list[dict]) -> dict:
     """Extract newsletter-level metadata from archive posts."""
+    parsed = urlparse(base_url)
+    host = parsed.netloc or parsed.path
+
+    # Derive slug from host (e.g. "wonderingaboutai" from "wonderingaboutai.substack.com")
+    slug = host.split(".")[0] if ".substack.com" in host else host
+
     # Try to get author name from publishedBylines
     author = None
     for post in posts:
@@ -50,7 +79,7 @@ def extract_newsletter_metadata(slug: str, posts: list[dict]) -> dict:
             author = bylines[0].get("name")
             break
 
-    # Newsletter name is often in the first post's publication info
+    # Newsletter name from publication info
     pub_name = slug  # fallback
     for post in posts:
         pub = post.get("publication") or {}
@@ -68,17 +97,17 @@ def extract_newsletter_metadata(slug: str, posts: list[dict]) -> dict:
     return {
         "name": pub_name,
         "slug": slug,
-        "url": f"https://{slug}.substack.com",
+        "url": base_url,
         "description": pub_description,
         "author": author,
         "last_fetched": None,
     }
 
 
-def fetch_post_content(slug: str, post_slug: str) -> str | None:
+def fetch_post_content(base_url: str, post_slug: str) -> str | None:
     """Fetch the full HTML content for a single post."""
     try:
-        url = f"https://{slug}.substack.com/p/{post_slug}"
+        url = f"{base_url}/p/{post_slug}"
         post = Post(url)
         return post.get_content()
     except Exception as e:
@@ -86,7 +115,7 @@ def fetch_post_content(slug: str, post_slug: str) -> str | None:
         return None
 
 
-def parse_post_metadata(post: dict, slug: str) -> dict:
+def parse_post_metadata(post: dict, base_url: str) -> dict:
     """Convert a raw archive API post dict into our article schema."""
     # Tags/categories
     tags = post.get("postTags") or []
@@ -95,7 +124,7 @@ def parse_post_metadata(post: dict, slug: str) -> dict:
     # Reactions breakdown
     reactions = post.get("reactions") or {}
 
-    canonical_url = post.get("canonical_url") or f"https://{slug}.substack.com/p/{post.get('slug', '')}"
+    canonical_url = post.get("canonical_url") or f"{base_url}/p/{post.get('slug', '')}"
 
     return {
         "title": post.get("title", "Untitled"),
